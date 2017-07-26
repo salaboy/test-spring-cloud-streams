@@ -29,7 +29,11 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.hateoas.Resources;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
+import org.springframework.messaging.MessagingException;
+import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
@@ -41,7 +45,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource("classpath:test-application.properties")
 @DirtiesContext
-@EnableBinding(StreamProducer.class)
+@EnableBinding(ClientStreams.class)
 public class MyAppStreamsTest {
 
     private static final String relativeMessagesEndpoint = "/api/messages";
@@ -53,11 +57,19 @@ public class MyAppStreamsTest {
     private TestRestTemplate restTemplate;
 
     @Autowired
-    private MessageChannel myProducer;
+    private MessageChannel myClientProducer;
+
+
+    @Autowired
+    private SubscribableChannel myClientConsumer;
+
+    public static boolean notificationArrived = false;
 
     @Test
     public void getAllMessagesTests() throws Exception {
 
+        assertThat(myClientProducer).isNotNull();
+        assertThat(myClientConsumer).isNotNull();
         //given
         ResponseEntity<Resources<String>> messagesResources = restTemplate.exchange(relativeMessagesEndpoint + "?pageable={pageable}&size={size}",
                                                                                     HttpMethod.GET,
@@ -71,13 +83,22 @@ public class MyAppStreamsTest {
         assertThat(messagesResources.getBody().getContent()).hasSize(1);
 
         //given
+        String messageString = "Message From Test";
+
+        myClientConsumer.subscribe(new MessageHandler() {
+            @Override
+            public void handleMessage(Message<?> message) throws MessagingException {
+                System.out.println(">>> Notification Arrived: " + message.getPayload());
+                assertThat(message.getPayload()).isEqualTo("Message Arrived: "+ messageString);
+                notificationArrived = true;
+            }
+        });
+
+        myClientProducer.send(MessageBuilder.withPayload(messageString).build());
 
 
-        myProducer.send(MessageBuilder.withPayload("Message From Test").build());
 
-
-
-        Thread.sleep(5000);
+        Thread.sleep(500);
 
 
         messagesResources = restTemplate.exchange(relativeMessagesEndpoint + "?pageable={pageable}&size={size}",
@@ -87,8 +108,14 @@ public class MyAppStreamsTest {
                                                   },
                                                   0,
                                                   2);
+
+
+
         //then
         assertThat(messagesResources).isNotNull();
         assertThat(messagesResources.getBody().getContent()).hasSize(2);
+
+        assertThat(notificationArrived).isTrue();
+
     }
 }

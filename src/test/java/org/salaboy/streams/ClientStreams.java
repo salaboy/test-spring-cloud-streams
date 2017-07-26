@@ -17,13 +17,21 @@
 
 package org.salaboy.streams;
 
+import org.springframework.cloud.stream.annotation.Input;
 import org.springframework.cloud.stream.annotation.Output;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.SubscribableChannel;
 
-public interface StreamProducer {
+public interface ClientStreams {
 
-    String MY_PRODUCER = "myProducer";
+    String MY_CLIENT_PRODUCER = "myClientProducer";
 
-    @Output(MY_PRODUCER)
-    MessageChannel myProducer();
+    @Output(MY_CLIENT_PRODUCER)
+    MessageChannel myClientProducer();
+
+
+    String MY_CLIENT_CONSUMER = "myClientConsumer";
+
+    @Input(MY_CLIENT_CONSUMER)
+    SubscribableChannel myClientConsumer();
 }
