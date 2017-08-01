@@ -34,4 +34,9 @@ public interface ClientStreams {
 
     @Input(MY_CLIENT_CONSUMER)
     SubscribableChannel myClientConsumer();
+
+    String MY_CLIENT_COMPLEX_CONSUMER = "myClientComplexConsumer";
+
+    @Input(MY_CLIENT_COMPLEX_CONSUMER)
+    SubscribableChannel myClientComplexConsumer();
 }

@@ -2,8 +2,10 @@ package org.salaboy.streams;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 
-
+import org.salaboy.streams.model.ComplexDataStructure;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -28,9 +30,13 @@ import static org.springframework.hateoas.mvc.ControllerLinkBuilder.methodOn;
 public class SampleApplication implements CommandLineRunner {
 
     private List<String> messages = new ArrayList<>();
+    private List<ComplexDataStructure> complexStuff = new ArrayList<>();
 
     @Autowired
     private MessageChannel myProducer;
+
+    @Autowired
+    private MessageChannel myComplexProducer;
 
     public static void main(String[] args) {
         SpringApplication.run(SampleApplication.class,
@@ -40,19 +46,32 @@ public class SampleApplication implements CommandLineRunner {
     @Override
     public void run(String... strings) throws Exception {
         messages.add(" - initial message  - ");
-        assert(myProducer != null);
+        complexStuff.add(new ComplexDataStructure("A",
+                                                  new Long(1),
+                                                  "B"));
+        assert (myProducer != null);
+        assert (myComplexProducer != null);
     }
 
     @StreamListener(MyChannels.MY_CONSUMER)
     public void consumeMessages(String message) {
         System.out.println(">>> Message Arrived: " + message);
         messages.add(message);
-        myProducer.send(MessageBuilder.withPayload("Message Arrived: "+message).build());
+        myProducer.send(MessageBuilder.withPayload("Message Arrived: " + message).build());
+        myComplexProducer.send(MessageBuilder.withPayload(new ComplexDataStructure(UUID.randomUUID().toString(),
+                                                                                   new Random().nextLong(),
+                                                                                   "B")).build());
     }
 
     @RequestMapping(value = "/messages", method = RequestMethod.GET)
     public Resources<String> getMessages() {
         return new Resources<String>(messages,
                                      linkTo(methodOn(SampleApplication.class).getMessages()).withSelfRel());
+    }
+
+    @RequestMapping(value = "/complex", method = RequestMethod.GET)
+    public Resources<ComplexDataStructure> getComplexStuff() {
+        return new Resources<ComplexDataStructure>(complexStuff,
+                                                   linkTo(methodOn(SampleApplication.class).getComplexStuff()).withSelfRel());
     }
 }

@@ -20,20 +20,19 @@ package org.salaboy.streams;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.salaboy.streams.model.ComplexDataStructure;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.cloud.stream.annotation.EnableBinding;
+import org.springframework.cloud.stream.annotation.StreamListener;
 import org.springframework.cloud.stream.binder.test.junit.rabbit.RabbitTestSupport;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.hateoas.Resources;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
-import org.springframework.messaging.MessageHandler;
-import org.springframework.messaging.MessagingException;
-import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
@@ -44,11 +43,12 @@ import static org.assertj.core.api.Assertions.*;
 @RunWith(SpringRunner.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource("classpath:test-application.properties")
-@DirtiesContext
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @EnableBinding(ClientStreams.class)
 public class MyAppStreamsTest {
 
     private static final String relativeMessagesEndpoint = "/api/messages";
+    private static final String relativeComplexStuffEndpoint = "/api/complex";
 
     @ClassRule
     public static RabbitTestSupport rabbitTestSupport = new RabbitTestSupport();
@@ -56,20 +56,49 @@ public class MyAppStreamsTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
-    @Autowired
-    private MessageChannel myClientProducer;
 
-
-    @Autowired
-    private SubscribableChannel myClientConsumer;
 
     public static boolean notificationArrived = false;
+
+    public static boolean complexNotificationArrived = false;
+
+    public static String messageSent = "Message From Test";
+
+
+    @Autowired
+    public MessageChannel myClientProducer;
+
+
+    @EnableAutoConfiguration
+    public static class StreamHandler {
+
+
+
+
+        @StreamListener(ClientStreams.MY_CLIENT_CONSUMER)
+        public void consumeNotification(String notif) {
+            assertThat(notif).isEqualTo("Message Arrived: " + messageSent);
+            notificationArrived = true;
+        }
+
+        @StreamListener(ClientStreams.MY_CLIENT_COMPLEX_CONSUMER)
+        public void consumeComplexNotif(ComplexDataStructure complexNotif) {
+            assertThat(complexNotif).isNotNull();
+            assertThat(complexNotif.getId()).isNotNull();
+            assertThat(complexNotif.getId()).isNotEmpty();
+            assertThat(complexNotif.getLongNumber()).isNotNull();
+            assertThat(complexNotif.getSomeOtherValue()).isNotNull();
+            assertThat(complexNotif.getSomeOtherValue()).isNotEmpty();
+
+            complexNotificationArrived = true;
+        }
+    }
 
     @Test
     public void getAllMessagesTests() throws Exception {
 
         assertThat(myClientProducer).isNotNull();
-        assertThat(myClientConsumer).isNotNull();
+
         //given
         ResponseEntity<Resources<String>> messagesResources = restTemplate.exchange(relativeMessagesEndpoint + "?pageable={pageable}&size={size}",
                                                                                     HttpMethod.GET,
@@ -83,23 +112,13 @@ public class MyAppStreamsTest {
         assertThat(messagesResources.getBody().getContent()).hasSize(1);
 
         //given
-        String messageString = "Message From Test";
 
-        myClientConsumer.subscribe(new MessageHandler() {
-            @Override
-            public void handleMessage(Message<?> message) throws MessagingException {
-                System.out.println(">>> Notification Arrived: " + message.getPayload());
-                assertThat(message.getPayload()).isEqualTo("Message Arrived: "+ messageString);
-                notificationArrived = true;
-            }
-        });
+        myClientProducer.send(MessageBuilder.withPayload(messageSent).build());
 
-        myClientProducer.send(MessageBuilder.withPayload(messageString).build());
-
-
-
-        Thread.sleep(500);
-
+        while (!notificationArrived) {
+            Thread.sleep(100);
+            System.out.println("Waiting for notification ...");
+        }
 
         messagesResources = restTemplate.exchange(relativeMessagesEndpoint + "?pageable={pageable}&size={size}",
                                                   HttpMethod.GET,
@@ -109,13 +128,45 @@ public class MyAppStreamsTest {
                                                   0,
                                                   2);
 
-
-
         //then
         assertThat(messagesResources).isNotNull();
         assertThat(messagesResources.getBody().getContent()).hasSize(2);
 
         assertThat(notificationArrived).isTrue();
+        assertThat(complexNotificationArrived).isTrue();
+    }
 
+    @Test
+    public void getAllComplexStuffTests() throws Exception {
+        notificationArrived = false;
+
+        assertThat(myClientProducer).isNotNull();
+
+        //given
+        ResponseEntity<Resources<ComplexDataStructure>> complexStuffResources = restTemplate.exchange(relativeComplexStuffEndpoint + "?pageable={pageable}&size={size}",
+                                                                                                      HttpMethod.GET,
+                                                                                                      null,
+                                                                                                      new ParameterizedTypeReference<Resources<ComplexDataStructure>>() {
+                                                                                                      },
+                                                                                                      0,
+                                                                                                      2);
+        //then
+        assertThat(complexStuffResources).isNotNull();
+        assertThat(complexStuffResources.getBody().getContent()).hasSize(1);
+
+        myClientProducer.send(MessageBuilder.withPayload(messageSent).build());
+
+        while (!notificationArrived) {
+            Thread.sleep(100);
+            System.out.println("Waiting for notification ...");
+        }
+
+        while (!complexNotificationArrived) {
+            Thread.sleep(100);
+            System.out.println("Waiting for complex notification ...");
+        }
+
+        assertThat(notificationArrived).isTrue();
+        assertThat(complexNotificationArrived).isTrue();
     }
 }
